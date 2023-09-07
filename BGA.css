@@ -1,0 +1,38 @@
+/* Background color */
+body {
+    background-color: #F5F5F5;
+}
+
+/* General accent color */
+.accent-color {
+    color: #FF6969;
+}
+
+ input{
+    color: #4477CE !important;
+}
+
+select{
+    color: #4477CE!important;
+}
+
+button {
+    color: #FF6969 !important;
+}
+
+ a{
+    color:#4477CE !important;
+}
+
+/* For stronger emphasis */
+.strong-accent {
+    color: #BB2525;
+}
+
+/* For text or elements that require a dark color */
+.dark-element {
+    color: #141E46;
+}
+
+
+

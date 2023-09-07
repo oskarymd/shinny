@@ -1,0 +1,274 @@
+---
+title: "Data Preparation for Broadway Shiny App"
+author: "OZ"
+date: "2023-08-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE, warning = FALSE,
+message = FALSE, error = FALSE, tidy.opts = list(width.cutoff = 60),
+tidy = TRUE)
+
+library(tidyverse)
+library(ggplot2)
+library(tidytuesdayR)
+library(plotly)
+library(bookdown)
+library(visdat)
+library(kableExtra)
+library(readr)
+library(ggridges)
+library(GGally)
+library(ggExtra)
+library(naniar)
+library(dplyr)
+library(knitr)
+library(rsconnect) 
+library(rmarkdown)
+library(lubridate)
+library(shinythemes)
+library(reprex)
+
+
+
+```
+
+```{r}
+# Get the Data
+
+grosses <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-04-28/grosses.csv', guess_max = 40000)
+synopses <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-04-28/synopses.csv')
+cpi <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-04-28/cpi.csv')
+pre_1985_starts <- readr::read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2020/2020-04-28/pre-1985-starts.csv')
+
+
+```
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+grosses_clean_temp <- grosses %>%
+  group_by(show) %>%
+  arrange(week_ending) %>%
+  mutate(run_number = cumsum(row_number() == 1 |
+                               week_ending - lag(week_ending) > 90)) %>%
+  group_by(show, run_number) %>%
+  mutate(week_of_run = row_number()) %>%
+  ungroup()
+
+re_1985_starts <- readr::read_csv("https://raw.githubusercontent.com/tacookson/data/master/broadway-grosses/pre-1985-starts.csv")
+
+calculate_weeks_since_start <- function(x) {
+  as.integer(pmax(1, difftime("1985-06-09", x, units = "weeks")))
+}
+
+pre_1985_starts_calculated <- grosses_clean_temp %>%
+  group_by(show, run_number) %>%
+  filter(min(week_ending) == "1985-06-09") %>%
+  ungroup() %>%
+  select(week_ending, show) %>%
+  left_join(pre_1985_starts, by = "show") %>%
+  group_by(show) %>%
+  mutate(week_of_run_originals = calculate_weeks_since_start(start_date) + row_number()) %>%
+  ungroup() %>%
+  select(week_ending, show, week_of_run_originals)
+
+grosses_clean <- grosses_clean_temp %>%
+  left_join(pre_1985_starts_calculated, by = c("show", "week_ending")) %>%
+  mutate(week_of_run = coalesce(week_of_run_originals, week_of_run)) %>%
+  select(-week_of_run_originals)
+
+
+```
+
+
+
+
+
+```{r}
+week_gross_show<- grosses%>% group_by(week_ending)%>%arrange(desc(weekly_gross))%>%
+  select(week_ending, weekly_gross_overall,show, theatre,weekly_gross,avg_ticket_price,top_ticket_price,seats_sold, seats_in_theatre ,pct_capacity,performances )
+weekly_pct_show<-grosses%>% group_by(week_ending)%>%arrange(desc(pct_capacity))
+
+week_gross_show <- week_gross_show %>%
+  rename(
+    Week_Ending = week_ending,
+    Weekly_Gross_Overall = weekly_gross_overall,
+    Show = show,
+    Theatre = theatre,
+    Weekly_Gross = weekly_gross,
+    Avg_Ticket_Price = avg_ticket_price,
+    Top_Ticket_Price = top_ticket_price,
+    Total_Seats_Sold = seats_sold,
+    Total_Seats_In_Theatre = seats_in_theatre,
+    Pct_Capacity = pct_capacity,
+    Performances = performances
+  )
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+tot_show <- grosses_clean %>%
+  group_by(show) %>%
+  mutate(
+    historical_total_gross = sum(weekly_gross),
+    avg_ticket_price = as.integer(sum(weekly_gross) / sum(seats_sold)),
+    total_seats_sold = as.integer(sum(seats_sold))
+  ) %>%
+  ungroup()
+
+tot_show <- tot_show %>%
+  select(show, historical_total_gross, week_of_run, avg_ticket_price, total_seats_sold)
+
+
+tot_show <- tot_show %>%
+  arrange(show, desc(week_of_run)) %>%
+  distinct(show, .keep_all = TRUE)
+
+
+broadway_grosses_with_total <- grosses %>%
+  left_join(tot_show, by = "show")
+
+
+
+```
+
+```{r}
+week_total <- grosses%>%
+  group_by(week_ending) %>%
+  summarize(
+    weekly_avg_price = as.integer(mean(avg_ticket_price, na.rm = TRUE)),   
+    weekly_seats_sold = sum(seats_sold, na.rm = TRUE),        
+    weekly_gross_overall = first(weekly_gross_overall)        
+  ) %>%
+  ungroup()
+
+week_total <- week_total %>%
+  rename(
+    Week_Ending = week_ending,
+    Weekly_Average_Price = weekly_avg_price,
+    Weekly_Seats_Sold = weekly_seats_sold,
+    Weekly_Gross_Overall = weekly_gross_overall
+  )
+
+
+
+
+```
+
+
+
+
+
+
+
+```{r}
+
+
+
+tot_show <- tot_show %>%
+  arrange(desc(historical_total_gross)) %>%
+  mutate(rank = row_number())
+
+tot_show <- tot_show %>%
+  mutate(historical_total_gross = as.integer(historical_total_gross))
+
+tot_show<- left_join(tot_show, synopses, by = "show")%>% 
+  mutate(year_of_run = round(week_of_run/52, 2))
+
+
+tot_show <- tot_show %>% 
+  rename(
+    Show = show,
+    Historical_Total_Gross = historical_total_gross,
+    Week_Of_Run = week_of_run,
+    Avg_Ticket_Price = avg_ticket_price,
+    Total_Seats_Sold = total_seats_sold,
+    Rank = rank,
+    Year_Of_Run = year_of_run,
+    Synopsis = synopsis
+  )
+
+
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+theatres <- grosses_clean %>%
+  group_by(theatre) %>%
+  summarise(
+    total_grosses = as.integer(sum(weekly_gross, na.rm = TRUE)),
+    average_pct_capacity = round(mean(pct_capacity, na.rm = TRUE), 2),
+    seats_in_theatre = max(seats_in_theatre, na.rm = TRUE) 
+  ) %>%
+  arrange(desc(total_grosses)) %>%     
+  mutate(rank = row_number()) %>%        
+  left_join(
+    grosses_clean %>%
+      group_by(theatre, show) %>%
+      summarise(num_weeks = n(), .groups = "drop") %>%   
+      arrange(theatre, desc(num_weeks)) %>%
+      group_by(theatre) %>%
+      slice_head(n = 2) %>%
+      summarise(popular_shows = paste(show, collapse = ", "), .groups = "drop"),  
+    by = "theatre"
+  )
+
+theatres <- theatres %>%
+  rename(
+    Theatre = theatre,
+    Total_Grosses = total_grosses,
+    Average_Pct_Capacity = average_pct_capacity,
+    Seats_In_Theatre = seats_in_theatre,
+    Rank = rank,
+    Popular_Shows = popular_shows
+  )
+
+
+
+```
+
+
+```{r}
+saveRDS(grosses_clean, "grosses_clean.rds")
+saveRDS(tot_show, "tot_show.rds")
+saveRDS(theatres, "theatres.rds")
+saveRDS(week_total, "week_total.rds")
+saveRDS(week_gross_show, "week_gross_show.rds")
+```
+
+
+

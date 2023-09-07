@@ -1,0 +1,12 @@
+name: assignment1
+title: assignment1
+username: oskarymd
+account: oskarymd
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 9676904
+bundleId: 7607036
+url: https://oskarymd.shinyapps.io/assignment1/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE
